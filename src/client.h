@@ -54,3 +54,5 @@ extern int         g_iEPGLogos;
 extern std::string PathCombine(const std::string &strPath, const std::string &strFileName);
 extern std::string GetClientFilePath(const std::string &strFileName);
 extern std::string GetUserFilePath(const std::string &strFileName);
+extern void setStreamProperty(PVR_NAMED_VALUE* properties, unsigned int* propertiesCount, std::string name, std::string value);
+extern void setStreamProperties(PVR_NAMED_VALUE* properties, unsigned int* propertiesCount, std::string url);

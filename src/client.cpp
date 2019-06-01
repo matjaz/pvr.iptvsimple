@@ -91,6 +91,21 @@ extern std::string GetUserFilePath(const std::string &strFileName)
   return PathCombine(g_strUserPath, strFileName);
 }
 
+extern void setStreamProperty(PVR_NAMED_VALUE* properties, unsigned int* propertiesCount, std::string name, std::string value)
+{
+  PVR_STRCPY(properties[*propertiesCount].strName, name.c_str());
+  PVR_STRCPY(properties[*propertiesCount].strValue, value.c_str());
+  *propertiesCount = (*propertiesCount) + 1;
+}
+
+extern void setStreamProperties(PVR_NAMED_VALUE* properties, unsigned int* propertiesCount, std::string url)
+{
+  setStreamProperty(properties, propertiesCount, PVR_STREAM_PROPERTY_STREAMURL, url);
+  setStreamProperty(properties, propertiesCount, PVR_STREAM_PROPERTY_INPUTSTREAMADDON, "inputstream.adaptive");
+  setStreamProperty(properties, propertiesCount, "inputstream.adaptive.manifest_type", "hls");
+  setStreamProperty(properties, propertiesCount, PVR_STREAM_PROPERTY_MIMETYPE, "application/x-mpegURL");
+}
+
 extern "C" {
 
 void ADDON_ReadSettings(void)
@@ -363,6 +378,25 @@ PVR_ERROR GetChannelStreamProperties(const PVR_CHANNEL* channel, PVR_NAMED_VALUE
   return PVR_ERROR_SERVER_ERROR;
 }
 
+PVR_ERROR GetEPGTagStreamProperties(const EPG_TAG* tag,
+    PVR_NAMED_VALUE* properties, unsigned int* iPropertiesCount)
+{
+  if (!tag || !properties || !iPropertiesCount)
+    return PVR_ERROR_SERVER_ERROR;
+  if (*iPropertiesCount < 1)
+    return PVR_ERROR_INVALID_PARAMETERS;
+
+  PVR_ERROR ret = PVR_ERROR_FAILED;
+  std::string strUrl = m_data->GetEpgTagUrl(tag);
+  if (!strUrl.empty())
+  {
+    *iPropertiesCount = 0;
+    setStreamProperties(properties, iPropertiesCount, strUrl);
+    ret = PVR_ERROR_NO_ERROR;
+  }
+  return ret;
+}
+
 int GetChannelGroupsAmount(void)
 {
   if (m_data)
@@ -385,6 +419,17 @@ PVR_ERROR GetChannelGroupMembers(ADDON_HANDLE handle, const PVR_CHANNEL_GROUP &g
     return m_data->GetChannelGroupMembers(handle, group);
 
   return PVR_ERROR_SERVER_ERROR;
+}
+
+PVR_ERROR IsEPGTagPlayable(const EPG_TAG* tag, bool* bIsPlayable)
+{
+  PVR_ERROR ret = PVR_ERROR_FAILED;
+  if (m_data)
+  {
+    *bIsPlayable = m_data->IsPlayable(tag);
+    ret = PVR_ERROR_NO_ERROR;
+  }
+  return ret;
 }
 
 PVR_ERROR SignalStatus(PVR_SIGNAL_STATUS &signalStatus)
@@ -446,8 +491,6 @@ PVR_ERROR SetRecordingLifetime(const PVR_RECORDING*) { return PVR_ERROR_NOT_IMPL
 PVR_ERROR GetStreamTimes(PVR_STREAM_TIMES*) { return PVR_ERROR_NOT_IMPLEMENTED; }
 PVR_ERROR GetStreamProperties(PVR_STREAM_PROPERTIES*) { return PVR_ERROR_NOT_IMPLEMENTED; }
 PVR_ERROR IsEPGTagRecordable(const EPG_TAG*, bool*) { return PVR_ERROR_NOT_IMPLEMENTED; }
-PVR_ERROR IsEPGTagPlayable(const EPG_TAG*, bool*) { return PVR_ERROR_NOT_IMPLEMENTED; }
-PVR_ERROR GetEPGTagStreamProperties(const EPG_TAG*, PVR_NAMED_VALUE*, unsigned int*) { return PVR_ERROR_NOT_IMPLEMENTED; }
 PVR_ERROR GetEPGTagEdl(const EPG_TAG* epgTag, PVR_EDL_ENTRY edl[], int *size) { return PVR_ERROR_NOT_IMPLEMENTED; }
 PVR_ERROR GetStreamReadChunkSize(int* chunksize) { return PVR_ERROR_NOT_IMPLEMENTED; }
 
