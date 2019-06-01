@@ -50,6 +50,8 @@
 #define SECONDS_IN_DAY          86400
 #define GENRES_MAP_FILENAME     "genres.xml"
 
+const int64_t maxRecallSeconds = SECONDS_IN_DAY * 7;
+
 using namespace ADDON;
 using namespace rapidxml;
 
@@ -281,6 +283,7 @@ bool PVRIptvData::LoadEPG(time_t iStart, time_t iEnd)
     GetNodeValue(pChannelNode, "title", entry.strTitle);
     GetNodeValue(pChannelNode, "desc", entry.strPlot);
     GetNodeValue(pChannelNode, "category", entry.strGenreString);
+    GetNodeValue(pChannelNode, "url", entry.strStreamURL);
 
     xml_node<> *pIconNode = pChannelNode->first_node("icon");
     if (pIconNode == NULL || !GetAttributeValue(pIconNode, "src", entry.strIconPath))
@@ -326,12 +329,11 @@ bool PVRIptvData::LoadPlayList(void)
   int iEPGTimeShift     = 0;
   std::vector<int> iCurrentGroupId;
 
-  PVRIptvChannel tmpChannel;
+  PVRIptvChannel tmpChannel = {0};
   tmpChannel.strTvgId       = "";
   tmpChannel.strChannelName = "";
   tmpChannel.strTvgName     = "";
   tmpChannel.strTvgLogo     = "";
-  tmpChannel.iTvgShift      = 0;
 
   std::string strLine;
   while(std::getline(stream, strLine))
@@ -629,13 +631,27 @@ PVR_ERROR PVRIptvData::GetChannels(ADDON_HANDLE handle, bool bRadio)
 
 bool PVRIptvData::GetChannel(const PVR_CHANNEL &channel, PVRIptvChannel &myChannel)
 {
+  return GetChannel((int)channel.iUniqueId, myChannel);
+}
+
+bool PVRIptvData::GetChannel(const EPG_TAG *tag, PVRIptvChannel &myChannel)
+{
+  if (tag && GetChannel((int)tag->iUniqueChannelId, myChannel))
+  {
+    return true;
+  }
+  return false;
+}
+
+bool PVRIptvData::GetChannel(int uniqueId, PVRIptvChannel &myChannel)
+{
   P8PLATFORM::CLockObject lock(m_mutex);
   for (unsigned int iChannelPtr = 0; iChannelPtr < m_channels.size(); iChannelPtr++)
   {
     PVRIptvChannel &thisChannel = m_channels.at(iChannelPtr);
-    if (thisChannel.iUniqueId == (int) channel.iUniqueId)
+    if (thisChannel.iUniqueId == uniqueId)
     {
-      myChannel.iUniqueId         = thisChannel.iUniqueId;
+      myChannel.iUniqueId         = uniqueId;
       myChannel.bRadio            = thisChannel.bRadio;
       myChannel.iChannelNumber    = thisChannel.iChannelNumber;
       myChannel.iEncryptionSystem = thisChannel.iEncryptionSystem;
@@ -790,6 +806,33 @@ PVR_ERROR PVRIptvData::GetEPGForChannel(ADDON_HANDLE handle, const PVR_CHANNEL &
   return PVR_ERROR_NO_ERROR;
 }
 
+bool PVRIptvData::IsPlayable(const EPG_TAG *tag)
+{
+  time_t current_time;
+  time(&current_time);
+  return ((current_time - tag->endTime) < maxRecallSeconds)
+      && (tag->startTime < current_time);
+}
+
+std::string PVRIptvData::GetEpgTagUrl(const EPG_TAG *tag)
+{
+  std::vector<PVRIptvEpgChannel>::iterator it;
+  for(it = m_epg.begin(); it < m_epg.end(); ++it)
+  {
+    if (it->epg.size() > 0) {
+      std::vector<PVRIptvEpgEntry>::iterator myTag;
+      for (myTag = it->epg.begin(); myTag < it->epg.end(); ++myTag)
+      {
+        if (myTag->iBroadcastId == tag->iUniqueBroadcastId) {
+          return myTag->strStreamURL;
+        }
+      }
+    }
+  }
+
+  return "";
+}
+
 int PVRIptvData::GetFileContents(std::string& url, std::string &strContent)
 {
   strContent.clear();
@@ -888,21 +931,18 @@ PVRIptvEpgChannel * PVRIptvData::FindEpg(const std::string &strId)
   return NULL;
 }
 
-PVRIptvEpgChannel * PVRIptvData::FindEpgForChannel(PVRIptvChannel &channel)
+PVRIptvEpgChannel * PVRIptvData::FindEpgForChannel(const PVRIptvChannel &channel)
 {
   std::vector<PVRIptvEpgChannel>::iterator it;
   for(it = m_epg.begin(); it < m_epg.end(); ++it)
   {
-    if (it->strId == channel.strTvgId)
+    if (it->strId == channel.strTvgId || it->strName == channel.strChannelName || it->strName == channel.strTvgName) {
       return &*it;
+    }
 
     std::string strName = it->strName;
     StringUtils::Replace(strName, ' ', '_');
-    if (strName == channel.strTvgName
-      || it->strName == channel.strTvgName)
-      return &*it;
-
-    if (it->strName == channel.strChannelName)
+    if (strName == channel.strTvgName)
       return &*it;
   }
 
